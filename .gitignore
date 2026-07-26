@@ -1,0 +1,15 @@
+# Binaries
+/tfstate-drift
+tfstate-drift-bin
+*.exe
+dist/
+
+# Test / build artifacts
+out.json
+coverage.out
+*.tfplan
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store

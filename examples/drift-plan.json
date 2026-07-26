@@ -1,0 +1,60 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.5",
+  "resource_drift": [
+    {
+      "address": "aws_instance.web",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "web",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "id": "i-0abc123",
+          "instance_type": "t3.micro",
+          "monitoring": false,
+          "tags": { "Env": "dev", "Owner": "platform" }
+        },
+        "after": {
+          "id": "i-0abc123",
+          "instance_type": "t3.small",
+          "monitoring": true,
+          "tags": { "Env": "prod", "Owner": "platform" }
+        }
+      }
+    },
+    {
+      "address": "module.network.aws_security_group.web",
+      "module_address": "module.network",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "web",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "id": "sg-0def456",
+          "ingress": [{ "from_port": 22, "to_port": 22, "protocol": "tcp" }]
+        },
+        "after": {
+          "id": "sg-0def456",
+          "ingress": [{ "from_port": 2222, "to_port": 2222, "protocol": "tcp" }]
+        }
+      }
+    },
+    {
+      "address": "module.network.aws_eip.nat",
+      "module_address": "module.network",
+      "mode": "managed",
+      "type": "aws_eip",
+      "name": "nat",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["delete"],
+        "before": { "id": "eipalloc-0aa11bb", "public_ip": "203.0.113.10" },
+        "after": null
+      }
+    }
+  ]
+}

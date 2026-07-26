@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.22", "1.23"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Test (race)
+        run: go test -race ./...
+
+      - name: Build
+        run: go build -o tfstate-drift .
+
+      - name: Smoke test
+        run: |
+          set +e
+          ./tfstate-drift scan --plan-json examples/drift-plan.json --format json --no-color > out.json
+          code=$?
+          set -e
+          test "$code" -eq 2 || { echo "expected exit 2 on drift, got $code"; exit 1; }
+          grep -q '"drift_detected": true' out.json
+
+          set +e
+          ./tfstate-drift scan --plan-json examples/no-drift-plan.json --no-color
+          code=$?
+          set -e
+          test "$code" -eq 0 || { echo "expected exit 0 on no drift, got $code"; exit 1; }
+          echo "smoke test passed"
