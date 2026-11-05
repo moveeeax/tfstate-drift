@@ -1,7 +1,7 @@
 # tfstate-drift
 
 [![ci](https://github.com/moveeeax/tfstate-drift/actions/workflows/ci.yml/badge.svg)](https://github.com/moveeeax/tfstate-drift/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/badge/go-1.22%2B-00ADD8?logo=go)](https://go.dev/)
+[![Go](https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 > Spot infrastructure drift at a glance with a readable tree diff.
@@ -26,6 +26,8 @@ All Terraform access sits behind a `PlanProvider` interface, so the detection an
 rendering logic is unit-tested against JSON fixtures with no cloud or network access.
 
 ## Install
+
+Requires Go 1.26 or newer.
 
 ```bash
 go install github.com/moveeeax/tfstate-drift@latest
