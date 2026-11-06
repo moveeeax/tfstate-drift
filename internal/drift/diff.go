@@ -62,7 +62,7 @@ func flatten(prefix string, v any, out map[string]any) {
 			return
 		}
 		for i, val := range t {
-			flatten(fmt.Sprintf("%s[%d]", prefix, i), val, out)
+			flatten(indexPath(prefix, i), val, out)
 		}
 	default:
 		if v == nil && prefix == "" {
@@ -77,4 +77,8 @@ func join(prefix, key string) string {
 		return key
 	}
 	return prefix + "." + key
+}
+
+func indexPath(prefix string, i int) string {
+	return fmt.Sprintf("%s[%d]", prefix, i)
 }

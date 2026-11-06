@@ -6,6 +6,7 @@ package drift
 type Report struct {
 	DriftDetected bool          `json:"drift_detected"`
 	ResourceCount int           `json:"resource_count"`
+	IgnoredCount  int           `json:"ignored_count"`
 	Modules       []ModuleDrift `json:"modules"`
 }
 
@@ -26,9 +27,12 @@ type ResourceDrift struct {
 }
 
 // AttrChange is a single attribute whose value drifted, addressed by a dotted
-// path (e.g. "tags.Env" or "ingress[0].from_port").
+// path (e.g. "tags.Env" or "ingress[0].from_port"). Sensitive is set when
+// Terraform marks the value sensitive; Before and After then hold
+// SensitiveMask unless the caller opted out of masking.
 type AttrChange struct {
-	Path   string `json:"path"`
-	Before any    `json:"before"`
-	After  any    `json:"after"`
+	Path      string `json:"path"`
+	Before    any    `json:"before"`
+	After     any    `json:"after"`
+	Sensitive bool   `json:"sensitive,omitempty"`
 }

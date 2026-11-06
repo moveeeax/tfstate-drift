@@ -19,7 +19,7 @@ func loadFixture(t *testing.T, path string) *Plan {
 }
 
 func TestDetectGroupsByModule(t *testing.T) {
-	report := Detect(loadFixture(t, "../../examples/drift-plan.json"))
+	report := Detect(loadFixture(t, "../../examples/drift-plan.json"), Options{})
 
 	if !report.DriftDetected {
 		t.Fatal("expected drift to be detected")
@@ -48,7 +48,7 @@ func TestDetectGroupsByModule(t *testing.T) {
 }
 
 func TestDetectAttributeDiff(t *testing.T) {
-	report := Detect(loadFixture(t, "../../examples/drift-plan.json"))
+	report := Detect(loadFixture(t, "../../examples/drift-plan.json"), Options{})
 	web := report.Modules[0].Resources[0]
 	if web.Address != "aws_instance.web" {
 		t.Fatalf("root resource = %q", web.Address)
@@ -77,7 +77,7 @@ func TestDetectAttributeDiff(t *testing.T) {
 }
 
 func TestDetectDeleteAction(t *testing.T) {
-	report := Detect(loadFixture(t, "../../examples/drift-plan.json"))
+	report := Detect(loadFixture(t, "../../examples/drift-plan.json"), Options{})
 	eip := report.Modules[1].Resources[0]
 	if eip.Action != "delete" {
 		t.Fatalf("eip action = %q, want delete", eip.Action)
@@ -89,7 +89,7 @@ func TestDetectDeleteAction(t *testing.T) {
 }
 
 func TestDetectNoDrift(t *testing.T) {
-	report := Detect(loadFixture(t, "../../examples/no-drift-plan.json"))
+	report := Detect(loadFixture(t, "../../examples/no-drift-plan.json"), Options{})
 	if report.DriftDetected {
 		t.Fatal("expected no drift")
 	}
@@ -99,7 +99,7 @@ func TestDetectNoDrift(t *testing.T) {
 }
 
 func TestDetectNilPlan(t *testing.T) {
-	report := Detect(nil)
+	report := Detect(nil, Options{})
 	if report.DriftDetected || report.Modules == nil {
 		t.Fatalf("nil plan should yield empty non-nil report, got %+v", report)
 	}

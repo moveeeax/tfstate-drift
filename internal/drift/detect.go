@@ -5,10 +5,21 @@ import (
 	"strings"
 )
 
+// Options tunes Detect. The zero value masks sensitive values and ignores
+// nothing.
+type Options struct {
+	// ShowSensitive keeps sensitive values in the output instead of masking
+	// them. Changes are still flagged Sensitive.
+	ShowSensitive bool
+	// Ignore drops known-noisy drift. A resource left with no attribute
+	// changes after filtering is dropped and counted in IgnoredCount.
+	Ignore []IgnoreRule
+}
+
 // Detect turns a parsed refresh-only plan into a grouped drift report.
 // Resources whose only action is "no-op" are skipped: Terraform occasionally
 // lists a resource in resource_drift even when the net change is nothing.
-func Detect(plan *Plan) *Report {
+func Detect(plan *Plan, opts Options) *Report {
 	report := &Report{Modules: []ModuleDrift{}}
 	if plan == nil {
 		return report
@@ -20,6 +31,20 @@ func Detect(plan *Plan) *Report {
 		if action == "no-op" || action == "" {
 			continue
 		}
+		if ignoresResource(opts.Ignore, rp.Address) {
+			report.IgnoredCount++
+			continue
+		}
+		attrs := diffAttributes(rp.Change.Before, rp.Change.After)
+		if len(attrs) > 0 {
+			attrs = filterIgnored(opts.Ignore, rp.Address, attrs)
+			if len(attrs) == 0 {
+				report.IgnoredCount++
+				continue
+			}
+		}
+		maskSensitive(attrs, rp.Change, opts.ShowSensitive)
+
 		mod := rp.ModuleAddress
 		if mod == "" {
 			mod = "root"
@@ -29,7 +54,7 @@ func Detect(plan *Plan) *Report {
 			Type:       rp.Type,
 			Name:       rp.Name,
 			Action:     action,
-			Attributes: diffAttributes(rp.Change.Before, rp.Change.After),
+			Attributes: attrs,
 		})
 		report.ResourceCount++
 	}

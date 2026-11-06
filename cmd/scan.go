@@ -12,10 +12,12 @@ import (
 
 func newScanCmd() *cobra.Command {
 	var (
-		chdir    string
-		format   string
-		planJSON string
-		noColor  bool
+		chdir         string
+		format        string
+		planJSON      string
+		noColor       bool
+		showSensitive bool
+		ignore        []string
 	)
 
 	cmd := &cobra.Command{
@@ -29,6 +31,11 @@ func newScanCmd() *cobra.Command {
 				return fmt.Errorf("invalid --format %q: want \"tree\" or \"json\"", format)
 			}
 
+			rules, err := loadIgnoreRules(chdir, ignore)
+			if err != nil {
+				return err
+			}
+
 			data, err := loadPlan(cmd, planJSON, chdir)
 			if err != nil {
 				return err
@@ -38,7 +45,10 @@ func newScanCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			report := drift.Detect(plan)
+			report := drift.Detect(plan, drift.Options{
+				ShowSensitive: showSensitive,
+				Ignore:        rules,
+			})
 
 			switch format {
 			case "json":
@@ -63,7 +73,26 @@ func newScanCmd() *cobra.Command {
 	cmd.Flags().StringVar(&format, "format", "tree", "output format: tree|json")
 	cmd.Flags().StringVar(&planJSON, "plan-json", "", "read a pre-generated `terraform show -json` file instead of running terraform")
 	cmd.Flags().BoolVar(&noColor, "no-color", false, "disable ANSI colors in tree output")
+	cmd.Flags().BoolVar(&showSensitive, "show-sensitive", false, "print values Terraform marks sensitive instead of masking them")
+	cmd.Flags().StringArrayVar(&ignore, "ignore", nil, "ignore drift matching `<address glob>[:<attr path glob>]` (repeatable; adds to "+drift.IgnoreFile+" in --chdir)")
 	return cmd
+}
+
+// loadIgnoreRules merges the ignore file in the working directory with the
+// --ignore flags.
+func loadIgnoreRules(chdir string, flags []string) ([]drift.IgnoreRule, error) {
+	rules, err := drift.LoadIgnoreFile(chdir)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range flags {
+		rule, err := drift.ParseIgnoreRule(f)
+		if err != nil {
+			return nil, fmt.Errorf("--ignore: %w", err)
+		}
+		rules = append(rules, rule)
+	}
+	return rules, nil
 }
 
 // loadPlan reads plan JSON from a file when --plan-json is set, otherwise runs
