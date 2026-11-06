@@ -44,11 +44,19 @@ func Tree(report *drift.Report, color bool) string {
 	var b strings.Builder
 
 	if !report.DriftDetected {
-		fmt.Fprintln(&b, p.ok.Render("No drift detected. State matches configuration."))
+		msg := "No drift detected. State matches configuration."
+		if report.IgnoredCount > 0 {
+			msg = fmt.Sprintf("No drift detected (%d drifted resource(s) ignored).", report.IgnoredCount)
+		}
+		fmt.Fprintln(&b, p.ok.Render(msg))
 		return b.String()
 	}
 
-	fmt.Fprintln(&b, p.title.Render(fmt.Sprintf("tfstate-drift: %d resource(s) drifted", report.ResourceCount)))
+	title := fmt.Sprintf("tfstate-drift: %d resource(s) drifted", report.ResourceCount)
+	if report.IgnoredCount > 0 {
+		title += fmt.Sprintf(", %d ignored", report.IgnoredCount)
+	}
+	fmt.Fprintln(&b, p.title.Render(title))
 
 	for _, m := range report.Modules {
 		fmt.Fprintf(&b, "\n%s\n", p.module.Render(m.Module))
@@ -66,8 +74,8 @@ func Tree(report *drift.Report, color bool) string {
 				fmt.Fprintf(&b, "%s ~ %s: %s → %s\n",
 					cont,
 					a.Path,
-					p.before.Render(formatValue(a.Before)),
-					p.after.Render(formatValue(a.After)))
+					p.before.Render(formatValue(a.Before, a.Sensitive)),
+					p.after.Render(formatValue(a.After, a.Sensitive)))
 			}
 		}
 	}
@@ -75,8 +83,12 @@ func Tree(report *drift.Report, color bool) string {
 }
 
 // formatValue renders a JSON value compactly for the tree: strings stay quoted,
-// scalars render bare, and nested structures collapse to compact JSON.
-func formatValue(v any) string {
+// scalars render bare, and nested structures collapse to compact JSON. A
+// masked sensitive value renders bare as (sensitive).
+func formatValue(v any, sensitive bool) string {
+	if sensitive && v == drift.SensitiveMask {
+		return drift.SensitiveMask
+	}
 	out, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Sprintf("%v", v)

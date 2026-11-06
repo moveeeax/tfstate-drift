@@ -28,10 +28,14 @@ type ResourcePlan struct {
 }
 
 // Change holds the before/after attribute maps and the planned actions.
+// BeforeSensitive and AfterSensitive mirror the shape of Before and After with
+// true on every value Terraform marks sensitive (or are a bare bool).
 type Change struct {
-	Actions []string       `json:"actions"`
-	Before  map[string]any `json:"before"`
-	After   map[string]any `json:"after"`
+	Actions         []string       `json:"actions"`
+	Before          map[string]any `json:"before"`
+	After           map[string]any `json:"after"`
+	BeforeSensitive any            `json:"before_sensitive"`
+	AfterSensitive  any            `json:"after_sensitive"`
 }
 
 // Parse decodes a `terraform show -json` plan document. It is deliberately
