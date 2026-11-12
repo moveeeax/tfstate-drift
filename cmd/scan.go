@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/moveeeax/tfstate-drift/internal/drift"
+	"github.com/moveeeax/tfstate-drift/internal/notify"
 	"github.com/moveeeax/tfstate-drift/internal/render"
 	"github.com/moveeeax/tfstate-drift/internal/runner"
 	"github.com/spf13/cobra"
@@ -18,6 +19,8 @@ func newScanCmd() *cobra.Command {
 		noColor       bool
 		showSensitive bool
 		ignore        []string
+		notifySpecs   []string
+		terraformBin  string
 	)
 
 	cmd := &cobra.Command{
@@ -35,8 +38,12 @@ func newScanCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			sinks, err := parseSinks(notifySpecs)
+			if err != nil {
+				return err
+			}
 
-			data, err := loadPlan(cmd, planJSON, chdir)
+			data, err := loadPlan(cmd, planJSON, runner.NewTerraform(chdir, terraformBin))
 			if err != nil {
 				return err
 			}
@@ -62,6 +69,10 @@ func newScanCmd() *cobra.Command {
 				fmt.Fprint(cmd.OutOrStdout(), render.Tree(report, color))
 			}
 
+			if err := notify.Send(cmd.Context(), sinks, report); err != nil {
+				return err
+			}
+
 			if report.DriftDetected {
 				return &DriftError{Count: report.ResourceCount}
 			}
@@ -75,7 +86,22 @@ func newScanCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noColor, "no-color", false, "disable ANSI colors in tree output")
 	cmd.Flags().BoolVar(&showSensitive, "show-sensitive", false, "print values Terraform marks sensitive instead of masking them")
 	cmd.Flags().StringArrayVar(&ignore, "ignore", nil, "ignore drift matching `<address glob>[:<attr path glob>]` (repeatable; adds to "+drift.IgnoreFile+" in --chdir)")
+	cmd.Flags().StringArrayVar(&notifySpecs, "notify", nil, "send the report to `slack=<webhook url>` or slack=env:NAME when drift is found (repeatable)")
+	cmd.Flags().StringVar(&terraformBin, "terraform-bin", "terraform", "terraform executable to run, e.g. tofu")
 	return cmd
+}
+
+// parseSinks builds the notification sinks from the --notify flags.
+func parseSinks(specs []string) ([]notify.Sink, error) {
+	sinks := make([]notify.Sink, 0, len(specs))
+	for _, spec := range specs {
+		s, err := notify.ParseSpec(spec)
+		if err != nil {
+			return nil, err
+		}
+		sinks = append(sinks, s)
+	}
+	return sinks, nil
 }
 
 // loadIgnoreRules merges the ignore file in the working directory with the
@@ -96,10 +122,10 @@ func loadIgnoreRules(chdir string, flags []string) ([]drift.IgnoreRule, error) {
 }
 
 // loadPlan reads plan JSON from a file when --plan-json is set, otherwise runs
-// a refresh-only Terraform plan in the working directory.
-func loadPlan(cmd *cobra.Command, planJSON, chdir string) ([]byte, error) {
+// a refresh-only plan through tf.
+func loadPlan(cmd *cobra.Command, planJSON string, tf runner.PlanProvider) ([]byte, error) {
 	if planJSON != "" {
 		return os.ReadFile(planJSON)
 	}
-	return runner.NewTerraform(chdir).Plan(cmd.Context())
+	return tf.Plan(cmd.Context())
 }

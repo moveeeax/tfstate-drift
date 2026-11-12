@@ -29,6 +29,6 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(newScanCmd())
+	root.AddCommand(newScanCmd(), newWorkspacesCmd())
 	return root
 }

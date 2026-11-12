@@ -57,6 +57,9 @@ tfstate-drift scan --plan-json plan.json --format tree
 `--plan-json` accepts the output of `terraform show -json <planfile>`, letting you
 separate the (privileged) plan step from the (safe) reporting step.
 
+OpenTofu or a pinned binary: `--terraform-bin tofu` (or a path) picks the executable
+for both `scan` and `workspaces`.
+
 ### Tree output
 
 ```text
@@ -157,7 +160,117 @@ Each rule is `<address glob>[:<attr path glob>]`:
   attribute changes after filtering is dropped too. Dropped resources are counted in
   `ignored_count` and in the tree header, and they do not trigger exit code `2`.
 
+### Slack notifications
+
+`--notify slack=<webhook url>` posts a summary to a Slack
+[incoming webhook](https://api.slack.com/messaging/webhooks) when drift is found.
+Clean runs post nothing, and drift dropped by ignore rules does not count.
+`slack=env:NAME` reads the URL from the environment variable `NAME`, which keeps it
+out of shell history and `ps` output:
+
+```bash
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/... \
+  tfstate-drift scan --chdir ./infra --notify slack=env:SLACK_WEBHOOK_URL
+```
+
+The message lists each drifted resource with its action and the attribute paths that
+changed (up to 50 resources and 10 paths each). Attribute values are never sent, so
+nothing from the state reaches the channel. The webhook must be `https`. A failed post
+exits `1` and the error never contains the webhook URL.
+
+### Scheduled drift check
+
+Drift happens between applies, so run the check on a timer instead of waiting for the
+next PR. The job needs read access to the backend and the providers' APIs:
+
+```yaml
+name: drift
+on:
+  schedule:
+    - cron: '0 6 * * *'   # daily
+  workflow_dispatch:
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+      - run: terraform -chdir=env/prod init -input=false
+      - run: |
+          go install github.com/moveeeax/tfstate-drift@latest
+          tfstate-drift scan --chdir env/prod --no-color --notify slack=env:SLACK_WEBHOOK_URL
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+```
+
+The job fails (exit `2`) and posts to Slack when drift exists, and stays quiet otherwise.
+
+## Workspace inventory
+
+`tfstate-drift workspaces` lists every workspace of the backend configured in each
+`--chdir`, oldest state first, so environments nobody has touched in months show up
+before the invoice does:
+
+```bash
+tfstate-drift workspaces --chdir ./infra --chdir ./platform --stale-after 90d --refresh --format csv
+```
+
+```text
+tfstate-drift: 3 workspace(s), 1 stale, 1 drifted, 0 unreachable
+
+WORKSPACE  BACKEND  LAST WRITE  AGE         SERIAL  RESOURCES  PROVIDERS      STATUS
+demo       s3       2026-03-01  256d stale  7       3          hashicorp/aws  clean
+staging    s3       2026-10-30  13d         41      12         hashicorp/aws  drifted (2)
+prod       s3       2026-11-11  1d          310     57         hashicorp/aws  clean
+
+demo
+      2  aws_instance
+      1  aws_eip
+...
+```
+
+Workspaces are listed with `terraform workspace list` and read with
+`terraform state pull`, so every backend Terraform supports works (s3, gcs, azurerm,
+remote, cloud, local) with the credentials Terraform already uses. Each directory must
+be initialized. The tool sets `TF_WORKSPACE` per command, so the workspace selected in
+the directory does not change, and it never writes state.
+
+Per workspace:
+
+- `last_write`: when the state object was last written (apply, import, `state mv`,
+  refresh-only apply). Read from the object's `LastModified` for **s3** (one
+  `HeadObject` call, the same `s3:GetObject` permission as `state pull`, using the
+  backend's `region`, `profile`, `endpoints.s3` and `use_path_style`; `assume_role` is
+  not replayed) and from the file's modification time for **local**. Other backends
+  report `null` and sort after the dated ones. A failed lookup is reported in
+  `last_write_error`.
+- `stale`: last write older than `--stale-after` (default `90d`; accepts `36h` style
+  durations, `0` disables).
+- `serial`, `lineage`, `terraform_version`, `providers` from the state.
+- `resource_count` and `resources_by_type`: managed resource instances (one per
+  `count`/`for_each` key); data sources are not counted.
+- `status`: `unchecked` without `--refresh`; with it, a refresh-only plan per workspace
+  sets `clean`, `drifted` (with `drift_count`, after ignore rules) or `unreachable`
+  (state pull or plan failed, reason in `error`).
+
+`--format` is `table` (default), `json` (stable field names, like `scan`) or `csv` with
+columns `dir,backend,workspace,last_write,age_days,stale,serial,lineage,terraform_version,resource_count,resources_by_type,providers,status,drift_count,error`.
+In CSV, `resources_by_type` is `type=count` pairs and `providers` is a list, both split
+by `;`, and cells starting with `=`, `+`, `-` or `@` get a leading `'` so spreadsheets
+do not run them as formulas.
+
+Exit code is `2` when `--refresh` finds a drifted workspace, `1` when a directory's
+workspaces cannot be listed, `0` otherwise (stale and unreachable workspaces are
+reported, not failed).
+
 ## Flags
+
+### `scan`
 
 | Flag          | Default  | Description                                              |
 | ------------- | -------- | -------------------------------------------------------- |
@@ -167,8 +280,23 @@ Each rule is `<address glob>[:<attr path glob>]`:
 | `--no-color`  | `false`  | Disable ANSI colors in tree output                       |
 | `--ignore`    | *(none)* | Ignore drift matching `<address glob>[:<attr glob>]`; repeatable, adds to `.tfdriftignore` |
 | `--show-sensitive` | `false` | Print values Terraform marks sensitive instead of `(sensitive)` |
+| `--notify`    | *(none)* | `slack=<webhook url>` or `slack=env:NAME`; posts only when drift is found; repeatable |
+| `--terraform-bin` | `terraform` | Executable to run, e.g. `tofu`                        |
+
+### `workspaces`
+
+| Flag              | Default     | Description                                                  |
+| ----------------- | ----------- | ------------------------------------------------------------ |
+| `--chdir`         | `.`         | Initialized working directory; repeatable                    |
+| `--format`        | `table`     | `table`, `json` or `csv`                                     |
+| `--refresh`       | `false`     | Run a refresh-only plan per workspace                        |
+| `--stale-after`   | `90d`       | Age after which a workspace is stale; `0` disables           |
+| `--ignore`        | *(none)*    | Ignore rules for `--refresh`; adds to `.tfdriftignore` in each `--chdir` |
+| `--terraform-bin` | `terraform` | Executable to run, e.g. `tofu`                               |
 
 ## Exit codes
+
+For `scan` (and `workspaces --refresh`):
 
 | Code | Meaning                     |
 | ---- | --------------------------- |
