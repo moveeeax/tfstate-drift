@@ -1,0 +1,45 @@
+{
+  "version": 4,
+  "terraform_version": "1.9.8",
+  "serial": 42,
+  "lineage": "3f1c2a9e-0000-4000-8000-000000000001",
+  "outputs": {},
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "web",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [{"index_key": 0, "attributes": {"id": "i-1"}}, {"index_key": 1, "attributes": {"id": "i-2"}}]
+    },
+    {
+      "module": "module.network",
+      "mode": "managed",
+      "type": "aws_eip",
+      "name": "nat",
+      "provider": "module.network.provider[\"registry.terraform.io/hashicorp/aws\"].west",
+      "instances": [{"attributes": {"id": "eipalloc-1"}}]
+    },
+    {
+      "mode": "managed",
+      "type": "random_id",
+      "name": "suffix",
+      "provider": "provider[\"registry.opentofu.org/hashicorp/random\"]",
+      "instances": [{"attributes": {"id": "abc"}}]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "gone",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": []
+    },
+    {
+      "mode": "data",
+      "type": "acme_zone",
+      "name": "main",
+      "provider": "provider[\"example.com/acme/acme\"]",
+      "instances": [{"attributes": {"id": "z"}}]
+    }
+  ]
+}
